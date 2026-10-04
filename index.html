@@ -1,0 +1,155 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#101826">
+<title>ログレス スタンプリセットチェッカー</title>
+<style>
+:root{--bg:#0d1420;--card:#172233;--card2:#1d2a3e;--text:#f7f9fc;--muted:#aeb9c9;--line:#2c3a50;--blue:#5aa8ff;--yellow:#ffd45a;--red:#ff6d6d;--green:#66d69e}
+*{box-sizing:border-box}
+body{margin:0;background:linear-gradient(#0d1420,#111a28);color:var(--text);font-family:system-ui,-apple-system,"Segoe UI","Noto Sans JP",sans-serif}
+main{max-width:680px;margin:auto;padding:calc(18px + env(safe-area-inset-top)) 13px calc(38px + env(safe-area-inset-bottom))}
+header{text-align:center;padding:7px 4px 19px}
+h1{font-size:clamp(22px,6vw,31px);margin:0 0 8px;letter-spacing:.02em}
+.today{font-size:14px;color:var(--muted)}
+.grid{display:grid;gap:13px}
+.card{background:linear-gradient(145deg,var(--card2),var(--card));border:1px solid var(--line);border-radius:20px;padding:18px;box-shadow:0 8px 25px rgba(0,0,0,.18)}
+.top{display:flex;align-items:flex-start;justify-content:space-between;gap:10px}
+.name{font-size:18px;font-weight:800;line-height:1.35}
+.badge{flex:none;font-size:12px;padding:5px 9px;border-radius:999px;background:#26364d;color:#c8d3e2}
+.label{font-size:12px;color:var(--muted);margin-top:15px}
+.date{font-size:17px;font-weight:700;margin-top:3px}
+.remain{font-size:27px;font-weight:900;margin:7px 0 11px}
+.remain strong{color:var(--blue);font-size:34px}
+.bar{height:8px;border-radius:99px;background:#29364a;overflow:hidden}
+.fill{height:100%;border-radius:99px;background:var(--blue)}
+.soon .remain strong{color:var(--yellow)} .soon .fill{background:var(--yellow)}
+.urgent .remain strong{color:var(--red)} .urgent .fill{background:var(--red)}
+.todayReset .remain strong{color:var(--green)} .todayReset .fill{background:var(--green)}
+.rikka{border-color:#40516b}
+.parts{display:grid;gap:10px;margin-top:15px}
+.part{background:rgba(8,15,25,.34);border:1px solid var(--line);border-radius:14px;padding:13px}
+.partTitle{font-weight:850;font-size:15px;margin-bottom:6px}
+.partTitle span{font-weight:600;color:var(--muted);font-size:12px;margin-left:5px}
+.jobs{font-size:14px;line-height:1.65}
+.swap{margin-top:13px;font-size:13px;color:var(--muted);line-height:1.55}
+.swap b{color:var(--text)}
+footer{text-align:center;color:#8290a4;font-size:11px;line-height:1.65;margin:18px 8px 0}
+</style>
+</head>
+<body>
+<main>
+<header>
+  <h1>ログレス<br>スタンプリセットチェッカー</h1>
+  <div class="today" id="today"></div>
+</header>
+<div class="grid" id="cards"></div>
+<footer>
+入力された開催期間を基準に自動計算しています。<br>
+運営スケジュール変更時は基準日・周期を修正してください。
+</footer>
+</main>
+
+<script>
+/*
+  ===== 編集する場合は基本的にここだけ =====
+  anchor = 次回更新日（または基準となる更新日）
+  cycle  = 固定周期（日）
+*/
+const quests = [
+  {name:"追憶のデイリークエスト", anchor:"2026-09-30", cycle:35},
+  {name:"試練の魔晶石",           anchor:"2026-10-07", cycle:28},
+  {name:"宝石の守護神",           anchor:"2026-10-21", cycle:28}
+];
+
+/*
+  六花：2026/9/30から下記構成（現在のPart1＝腕を基準）。
+  14日後ごとに Part1 / Part2 のジョブを入れ替える。
+*/
+const rikka = {
+  anchor:"2026-09-30",
+  cycle:14,
+  groupA:"ガーディアン・剣姫・リーフ",
+  groupB:"古代機鋼兵・デスペラード・ヴァルキリー"
+};
+
+const DAY=86400000;
+const d0=s=>new Date(s+"T00:00:00");
+const today0=()=>{const d=new Date();return new Date(d.getFullYear(),d.getMonth(),d.getDate())};
+const fmt=d=>`${d.getFullYear()}年${d.getMonth()+1}月${d.getDate()}日`;
+const wd=["日","月","火","水","木","金","土"];
+
+function nextCycle(anchor,cycle,today){
+  const a=d0(anchor);
+  const diff=Math.floor((today-a)/DAY);
+  const k=diff<=0?0:Math.ceil(diff/cycle);
+  const next=new Date(a.getTime()+k*cycle*DAY);
+  return {next,remaining:Math.round((next-today)/DAY)};
+}
+function stateClass(r){
+  if(r===0)return "todayReset";
+  if(r<=3)return "urgent";
+  if(r<=7)return "soon";
+  return "";
+}
+function normalCard(q,t){
+  const x=nextCycle(q.anchor,q.cycle,t);
+  const progress=Math.max(0,Math.min(100,(q.cycle-x.remaining)/q.cycle*100));
+  const msg=x.remaining===0 ? `<strong>本日更新！</strong>` : `更新まで <strong>あと${x.remaining}日</strong>`;
+  return `<section class="card ${stateClass(x.remaining)}">
+    <div class="top"><div class="name">${q.name}</div><div class="badge">${q.cycle}日周期</div></div>
+    <div class="label">次回更新</div>
+    <div class="date">${fmt(x.next)}（${wd[x.next.getDay()]}）</div>
+    <div class="remain">${msg}</div>
+    <div class="bar"><div class="fill" style="width:${progress}%"></div></div>
+  </section>`;
+}
+function rikkaCard(t){
+  const a=d0(rikka.anchor);
+  const diff=Math.floor((t-a)/DAY);
+
+  let period, part1, part2;
+  if(diff<0){
+    period=-1;
+    part1=rikka.groupA; part2=rikka.groupB;
+  }else{
+    period=Math.floor(diff/rikka.cycle);
+    const normal=period%2===0;
+    part1=normal?rikka.groupA:rikka.groupB;
+    part2=normal?rikka.groupB:rikka.groupA;
+  }
+
+  const x=nextCycle(rikka.anchor,rikka.cycle,t);
+  const progress=Math.max(0,Math.min(100,(rikka.cycle-x.remaining)/rikka.cycle*100));
+  const msg=x.remaining===0 ? `<strong>本日入れ替え！</strong>` : `入れ替えまで <strong>あと${x.remaining}日</strong>`;
+
+  return `<section class="card rikka ${stateClass(x.remaining)}">
+    <div class="top"><div class="name">六花の試練 Ⅰ・Ⅱ</div><div class="badge">14日周期</div></div>
+    <div class="parts">
+      <div class="part">
+        <div class="partTitle">Part 1 <span>腕</span></div>
+        <div class="jobs">${part1}</div>
+      </div>
+      <div class="part">
+        <div class="partTitle">Part 2 <span>頭</span></div>
+        <div class="jobs">${part2}</div>
+      </div>
+    </div>
+    <div class="label">次回ジョブ入れ替え</div>
+    <div class="date">${fmt(x.next)}（${wd[x.next.getDay()]}）</div>
+    <div class="remain">${msg}</div>
+    <div class="bar"><div class="fill" style="width:${progress}%"></div></div>
+    <div class="swap">次回は <b>Part 1 と Part 2 のジョブが入れ替わります。</b></div>
+  </section>`;
+}
+function render(){
+  const t=today0();
+  document.getElementById("today").textContent=`今日：${fmt(t)}（${wd[t.getDay()]}）`;
+  document.getElementById("cards").innerHTML=
+    quests.map(q=>normalCard(q,t)).join("")+rikkaCard(t);
+}
+render();
+</script>
+</body>
+</html>
